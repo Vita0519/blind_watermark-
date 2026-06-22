@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>盲水印工具</title>
+<style>
+:root {
+  --seed-bg: #ffffff;
+  --seed-fg: #1a1a1a;
+  --seed-primary: #0d9488;
+  --seed-accent: #0d9488;
+  --seed-surface: #f7f8fa;
+  --seed-radius: 8;
+  --bg: var(--seed-bg);
+  --fg: var(--seed-fg);
+  --surface: var(--seed-surface);
+  --primary: var(--seed-primary);
+  --accent: var(--seed-accent);
+  --muted: color-mix(in srgb, var(--seed-fg) 50%, var(--seed-bg));
+  --border: color-mix(in srgb, var(--seed-fg) 12%, var(--seed-bg));
+  --on-accent: color-mix(in srgb, var(--seed-bg) 95%, var(--seed-accent));
+  --danger: #ef4444;
+  --success: #10b981;
+  --radius: calc(var(--seed-radius) * 1px);
+  --radius-lg: calc(var(--seed-radius) * 1.5px);
+  --radius-pill: calc(var(--seed-radius) * 6px);
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+.header {
+  padding: 28px 24px 20px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+.header h1 {
+  font-size: 22px;
+  font-weight: 590;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 6px;
+}
+.header p {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.privacy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  margin-top: 10px;
+  font-weight: 510;
+  letter-spacing: 0.02em;
+}
+.privacy-badge svg { width: 13px; height: 13px; flex-shrink: 0; }
+.container {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+.tabs {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 24px;
+  background: var(--surface);
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  width: fit-content;
+}
+.tab {
+  padding: 9px 28px;
+  border: none;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 450;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  transition: background 0.18s, color 0.18s;
+  letter-spacing: -0.005em;
+}
+.tab:hover { color: var(--fg); }
+.tab.active {
+  background: var(--fg);
+  color: var(--bg);
+  font-weight: 510;
+}
+.panel { display: none; }
+.panel.active { display: block; }
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  margin-bottom: 14px;
+}
+.card-title {
+  font-size: 12px;
+  font-weight: 510;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.upload-zone {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 36px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.upload-zone svg {
+  width: 36px; height: 36px;
+  color: var(--border);
+  margin-bottom: 10px;
+}
+.upload-zone .uz-title {
+  font-size: 14px;
+  font-weight: 450;
+  margin-bottom: 3px;
+}
+.upload-zone .uz-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.form-group { margin-bottom: 14px; }
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 450;
+  margin-bottom: 5px;
+  color: var(--fg);
+}
+.form-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--bg);
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.form-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.form-input::placeholder { color: color-mix(in srgb, var(--seed-fg) 35%, var(--seed-bg)); }
+.form-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.slider-row input[type="range"] {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+.slider-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--seed-fg) 15%, transparent);
+}
+.slider-val {
+  font-size: 13px;
+  font-weight: 510;
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border: none;
+  border-radius: var(--radius-pill);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 510;
+  cursor: pointer;
+  transition: opacity 0.18s, transform 0.1s;
+  letter-spacing: -0.005em;
+}
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: var(--bg); }
+.btn-primary:hover:not(:disabled) { opacity: 0.88; }
+.btn-secondary {
+  background: var(--fg);
+  color: var(--bg);
+}
+.btn-secondary:hover:not(:disabled) { opacity: 0.88; }
+.btn-ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover:not(:disabled) { border-color: var(--accent); }
+.action-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.progress-wrap {
+  display: none;
+  margin-top: 14px;
+}
+.progress-wrap.visible { display: block; }
+.progress-bar {
+  width: 100%;
+  height: 3px;
+  background: var(--surface);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.12s ease-out;
+  width: 0%;
+}
+.progress-text {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.preview-area {
+  margin-top: 18px;
+  display: none;
+}
+.preview-area.visible { display: block; }
+.preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.preview-box {
+  text-align: center;
+}
+.preview-box img {
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  object-fit: contain;
+  background: var(--surface);
+}
+.preview-label {
+  font-size: 11px;
+  font-weight: 450;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.result-box {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 14px;
+  word-break: break-all;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.result-label {
+  font-size: 12px;
+  font-weight: 510;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.result-text {
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--fg);
+  color: var(--bg);
+  padding: 10px 22px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 450;
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 1000;
+  pointer-events: none;
+  max-width: 90vw;
+  text-align: center;
+}
+.toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.footer {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.footer h3 {
+  font-size: 14px;
+  font-weight: 510;
+  margin-bottom: 10px;
+  letter-spacing: -0.01em;
+}
+.footer p {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.65;
+  margin-bottom: 8px;
+  max-width: 65ch;
+}
+.footer .algo-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin: 2px 3px 2px 0;
+  letter-spacing: 0.01em;
+}
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+.info-cell {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.info-cell strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 510;
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.capacity-info {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+  .header { padding: 20px 16px 16px; }
+  .header h1 { font-size: 19px; }
+  .container { padding: 16px 12px 36px; }
+  .tabs { width: 100%; }
+  .tab { flex: 1; text-align: center; padding: 9px 12px; font-size: 13px; }
+  .card { padding: 16px; }
+  .preview-grid { grid-template-columns: 1fr; }
+  .info-grid { grid-template-columns: 1fr; }
+  .action-row { flex-direction: column; }
+  .action-row .btn { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<header class="header" data-component="app-header">
+  <h1>盲水印工具</h1>
+  <p>基于频域变换的不可见水印，保护你的图片版权</p>
+  <div class="privacy-badge">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    所有处理在本地完成，图片不会上传
+  </div>
+</header>
+
+<main>
+<div class="container" data-component="workspace">
+  <div class="tabs" data-component="mode-tabs">
+    <button class="tab active" data-tab="embed">嵌入水印</button>
+    <button class="tab" data-tab="extract">提取水印</button>
+  </div>
+
+  <!-- Embed Panel -->
+  <div class="panel active" id="panel-embed" data-component="embed-panel">
+    <div class="card">
+      <div class="card-title">图片</div>
+      <div class="upload-zone" id="embed-upload-zone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div class="uz-title">点击或拖拽上传图片</div>
+        <div class="uz-hint">支持 JPG / PNG / WebP</div>
+      </div>
+      <input type="file" id="embed-file" accept="image/*" hidden>
+      <div class="capacity-info" id="embed-capacity"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">水印参数</div>
+      <div class="form-group">
+        <label class="form-label" for="embed-wm-text">水印文本</label>
+        <input class="form-input" type="text" id="embed-wm-text" placeholder="输入要嵌入的文本内容" maxlength="500">
+        <div class="form-hint" id="embed-wm-bytes">UTF-8 字节数：0</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="embed-password">密码</label>
+        <input class="form-input" type="password" id="embed-password" placeholder="用于加密水印，提取时需要相同密码">
+      </div>
+      <div class="form-group">
+        <label class="form-label">鲁棒性强度 (d1)</label>
+        <div class="slider-row">
+          <input type="range" id="embed-d1" min="10" max="100" value="36" step="1">
+          <span class="slider-val" id="embed-d1-val">36</span>
+        </div>
+        <div class="form-hint">值越大水印越难去除，但图片质量会略有下降</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">双重嵌入强度 (d2)</label>
+        <div class="slider-row">
+          <input type="range" id="embed-d2" min="0" max="80" value="20" step="1">
+          <span class="slider-val" id="embed-d2-val">20</span>
+        </div>
+        <div class="form-hint">设为 0 关闭，开启后更鲁棒但处理更慢</div>
+      </div>
+      <div class="action-row">
+        <button class="btn btn-primary" id="btn-embed" disabled>嵌入水印</button>
+        <button class="btn btn-ghost" id="btn-download" disabled style="display:none">下载水印图</button>
+      </div>
+    </div>
+
+    <div class="progress-wrap" id="embed-progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" id="embed-progress"></div></div>
+      <div class="progress-text" id="embed-progress-text">准备中...</div>
+    </div>
+
+    <div class="preview-area" id="embed-preview">
+      <div class="preview-grid">
+        <div class="preview-box">
+          <div class="preview-label">原图</div>
+          <img id="embed-img-orig" alt="原图">
+        </div>
+        <div class="preview-box">
+          <div class="preview-label">水印图</div>
+          <img id="embed-img-wm" alt="水印图">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Extract Panel -->
+  <div class="panel" id="panel-extract" data-component="extract-panel">
+    <div class="card">
+      <div class="card-title">图片</div>
+      <div class="upload-zone" id="extract-upload-zone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div class="uz-title">点击或拖拽上传水印图片</div>
+        <div class="uz-hint">支持 JPG / PNG / WebP</div>
+      </div>
+      <input type="file" id="extract-file" accept="image/*" hidden>
+    </div>
+
+    <div class="card">
+      <div class="card-title">提取参数</div>
+      <div class="form-group">
+        <label class="form-label" for="extract-password">密码</label>
+        <input class="form-input" type="password" id="extract-password" placeholder="输入嵌入时使用的密码">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="extract-wm-len">水印字节数</label>
+        <input class="form-input" type="number" id="extract-wm-len" placeholder="嵌入时显示的 UTF-8 字节数" min="1" max="5000">
+        <div class="form-hint">必须与嵌入时显示的 UTF-8 字节数一致</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">鲁棒性强度 (d1)</label>
+        <div class="slider-row">
+          <input type="range" id="extract-d1" min="10" max="100" value="36" step="1">
+          <span class="slider-val" id="extract-d1-val">36</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">双重嵌入强度 (d2)</label>
+        <div class="slider-row">
+          <input type="range" id="extract-d2" min="0" max="80" value="20" step="1">
+          <span class="slider-val" id="extract-d2-val">20</span>
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="btn btn-primary" id="btn-extract" disabled>提取水印</button>
+      </div>
+    </div>
+
+    <div class="progress-wrap" id="extract-progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" id="extract-progress"></div></div>
+      <div class="progress-text" id="extract-progress-text">准备中...</div>
+    </div>
+
+    <div class="preview-area" id="extract-result-area">
+      <div class="result-box">
+        <div class="result-label">提取的水印文本</div>
+        <div class="result-text" id="extract-result-text"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer" data-component="algo-footer">
+    <h3>关于算法</h3>
+    <p>本工具采用与 blind_watermark 相同的混合频域算法，依次经过三级变换后将水印信息嵌入到图片的低频分量中，具有良好的不可见性和抗压缩能力。</p>
+    <div style="margin: 10px 0 14px;">
+      <span class="algo-tag">Haar DWT</span>
+      <span class="algo-tag">DCT 4x4</span>
+      <span class="algo-tag">SVD 量化</span>
+      <span class="algo-tag">密码置乱</span>
+    </div>
+    <div class="info-grid">
+      <div class="info-cell">
+        <strong>密码</strong>
+        用于随机置乱水印位序和 DCT 系数排列，未提供正确密码无法提取水印
+      </div>
+      <div class="info-cell">
+        <strong>鲁棒性 d1</strong>
+        控制水印嵌入强度，值越大越抗攻击但图像变化越明显
+      </div>
+      <div class="info-cell">
+        <strong>双重嵌入 d2</strong>
+        对第二个奇异值也嵌入信息，提升鲁棒性但降低处理速度
+      </div>
+      <div class="info-cell">
+        <strong>隐私保障</strong>
+        所有计算均在浏览器 JavaScript 引擎中完成，不会向任何服务器发送数据
+      </div>
+    </div>
+  </div>
+</div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// Utility: Seeded PRNG (Mulberry32)
+// ============================================================
+function mulberry32(seed) {
+  let a = seed | 0;
+  return function() {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
+// ============================================================
+// Utility: Yield to UI
+// ============================================================
+function yieldUI() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+// ============================================================
+// Color Conversion: RGB <-> YUV
+// ============================================================
+function rgbToYUV(r, g, b) {
+  return [
+    0.299 * r + 0.587 * g + 0.114 * b,
+    -0.14713 * r - 0.28886 * g + 0.436 * b,
+    0.615 * r - 0.51499 * g - 0.10001 * b
+  ];
+}
+
+function yuvToRGB(y, u, v) {
+  return [
+    y + 1.13983 * v,
+    y - 0.39465 * u - 0.58060 * v,
+    y + 2.03211 * u
+  ];
+}
+
+// ============================================================
+// Haar DWT 2D (Forward & Inverse)
+// ============================================================
+function haarDWT2D(data, rows, cols) {
+  const tmp = new Float64Array(rows * cols);
+  const inv2 = 1 / Math.sqrt(2);
+  // Row pass
+  for (let i = 0; i < rows; i++) {
+    const half = cols >> 1;
+    for (let j = 0; j < half; j++) {
+      const a = data[i * cols + 2 * j];
+      const b = data[i * cols + 2 * j + 1];
+      tmp[i * cols + j] = (a + b) * inv2;
+      tmp[i * cols + half + j] = (a - b) * inv2;
+    }
+  }
+  // Column pass
+  const caRows = rows >> 1, caCols = cols >> 1;
+  const ca = new Float64Array(caRows * caCols);
+  const ch = new Float64Array(caRows * caCols);
+  const cv = new Float64Array(caRows * caCols);
+  const cd = new Float64Array(caRows * caCols);
+  for (let j = 0; j < cols; j++) {
+    const half = rows >> 1;
+    for (let i = 0; i < half; i++) {
+      const a = tmp[(2 * i) * cols + j];
+      const b = tmp[(2 * i + 1) * cols + j];
+      tmp[(2 * i) * cols + j] = (a + b) * inv2;
+      tmp[(2 * i + 1) * cols + j] = (a - b) * inv2;
+    }
+  }
+  for (let i = 0; i < caRows; i++) {
+    for (let j = 0; j < caCols; j++) {
+      ca[i * caCols + j] = tmp[(2 * i) * cols + 2 * j];
+      ch[i * caCols + j] = tmp[(2 * i) * cols + 2 * j + 1];
+      cv[i * caCols + j] = tmp[(2 * i + 1) * cols + 2 * j];
+      cd[i * caCols + j] = tmp[(2 * i + 1) * cols + 2 * j + 1];
+    }
+  }
+  return { ca, ch, cv, cd, caRows, caCols };
+}
+
+function haarIDWT2D(ca, ch, cv, cd, caRows, caCols) {
+  const rows = caRows * 2, cols = caCols * 2;
+  const tmp = new Float64Array(rows * cols);
+  const inv2 = 1 / Math.sqrt(2);
+  // Reconstruct interleaved
+  for (let i = 0; i < caRows; i++) {
+    for (let j = 0; j < caCols; j++) {
+      tmp[(2 * i) * cols + 2 * j] = ca[i * caCols + j];
+      tmp[(2 * i) * cols + 2 * j + 1] = ch[i * caCols + j];
+      tmp[(2 * i + 1) * cols + 2 * j] = cv[i * caCols + j];
+      tmp[(2 * i + 1) * cols + 2 * j + 1] = cd[i * caCols + j];
+    }
+  }
+  // Inverse column pass
+  for (let j = 0; j < cols; j++) {
+    for (let i = 0; i < caRows; i++) {
+      const lo = tmp[(2 * i) * cols + j];
+      const hi = tmp[(2 * i + 1) * cols + j];
+      tmp[(2 * i) * cols + j] = (lo + hi) * inv2;
+      tmp[(2 * i + 1) * cols + j] = (lo - hi) * inv2;
+    }
+  }
+  // Inverse row pass
+  const out = new Float64Array(rows * cols);
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < caCols; j++) {
+      const lo = tmp[i * cols + j];
+      const hi = tmp[i * cols + caCols + j];
+      out[i * cols + 2 * j] = (lo + hi) * inv2;
+      out[i * cols + 2 * j + 1] = (lo - hi) * inv2;
+    }
+  }
+  return out;
+}
+
+// ============================================================
+// DCT-II Orthonormal (4x4)
+// ============================================================
+const DCT_N = 4;
+const DCT_SQRT2 = Math.sqrt(2);
+const DCT_INV_SQRT2 = 1 / DCT_SQRT2;
+const DCT_INV_N = 1 / DCT_N;
+
+function dct4x4(block) {
+  const out = new Float64Array(16);
+  const tmp = new Float64Array(16);
+  // Rows
+  for (let k = 0; k < 4; k++) {
+    const ak = (k === 0) ? DCT_INV_SQRT2 : 1;
+    for (let l = 0; l < 4; l++) {
+      const al = (l === 0) ? DCT_INV_SQRT2 : 1;
+      let sum = 0;
+      for (let n = 0; n < 4; n++) {
+        for (let m = 0; m < 4; m++) {
+          sum += block[n * 4 + m] *
+            Math.cos((2 * n + 1) * k * Math.PI / 8) *
+            Math.cos((2 * m + 1) * l * Math.PI / 8);
+        }
+      }
+      tmp[k * 4 + l] = sum * ak * al * DCT_INV_N;
+    }
+  }
+  return tmp;
+}
+
+function idct4x4(block) {
+  const out = new Float64Array(16);
+  for (let n = 0; n < 4; n++) {
+    for (let m = 0; m < 4; m++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) {
+        const ak = (k === 0) ? DCT_INV_SQRT2 : 1;
+        for (let l = 0; l < 4; l++) {
+          const al = (l === 0) ? DCT_INV_SQRT2 : 1;
+          sum += ak * al * block[k * 4 + l] *
+            Math.cos((2 * n + 1) * k * Math.PI / 8) *
+            Math.cos((2 * m + 1) * l * Math.PI / 8);
+        }
+      }
+      out[n * 4 + m] = sum * DCT_INV_N;
+    }
+  }
+  return out;
+}
+
+// ============================================================
+// SVD for 4x4 matrices (Golub-Kahan + QR iteration)
+// ============================================================
+function mat4Mul(a, b) {
+  const c = new Float64Array(16);
+  for (let i = 0; i < 4; i++)
+    for (let k = 0; k < 4; k++) {
+      const aik = a[i * 4 + k];
+      if (aik === 0) continue;
+      for (let j = 0; j < 4; j++)
+        c[i * 4 + j] += aik * b[k * 4 + j];
+    }
+  return c;
+}
+
+function mat4Transpose(m) {
+  const r = new Float64Array(16);
+  for (let i = 0; i < 4; i++)
+    for (let j = 0; j < 4; j++)
+      r[j * 4 + i] = m[i * 4 + j];
+  return r;
+}
+
+// Bidiagonalize 4x4 matrix A = U_b * B * V_b^T using Householder
+function bidiagonalize(A) {
+  const n = 4;
+  const U = new Float64Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+  const V = new Float64Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+  const B = new Float64Array(A);
+
+  for (let k = 0; k < n; k++) {
+    // Left Householder on column k, rows k..n-1
+    let norm = 0;
+    for (let i = k; i < n; i++) norm += B[i * n + k] * B[i * n + k];
+    norm = Math.sqrt(norm);
+    if (norm > 1e-15) {
+      const sign = B[k * n + k] >= 0 ? 1 : -1;
+      const alpha = sign * norm;
+      const v = new Float64Array(n);
+      v[k] = B[k * n + k] + alpha;
+      for (let i = k + 1; i < n; i++) v[i] = B[i * n + k];
+      let vnorm = 0;
+      for (let i = k; i < n; i++) vnorm += v[i] * v[i];
+      vnorm = Math.sqrt(vnorm);
+      if (vnorm > 1e-15) {
+        for (let i = k; i < n; i++) v[i] /= vnorm;
+        // B = (I - 2vv^T) * B
+        for (let j = k; j < n; j++) {
+          let dot = 0;
+          for (let i = k; i < n; i++) dot += v[i] * B[i * n + j];
+          for (let i = k; i < n; i++) B[i * n + j] -= 2 * v[i] * dot;
+        }
+        // U = U * (I - 2vv^T)
+        for (let i = 0; i < n; i++) {
+          let dot = 0;
+          for (let j = k; j < n; j++) dot += U[i * n + j] * v[j];
+          for (let j = k; j < n; j++) U[i * n + j] -= 2 * dot * v[j];
+        }
+      }
+    }
+    // Right Householder on row k, columns k+1..n-1
+    if (k < n - 1) {
+      let norm2 = 0;
+      for (let j = k + 1; j < n; j++) norm2 += B[k * n + j] * B[k * n + j];
+      norm2 = Math.sqrt(norm2);
+      if (norm2 > 1e-15) {
+        const sign = B[k * n + k + 1] >= 0 ? 1 : -1;
+        const alpha = sign * norm2;
+        const v = new Float64Array(n);
+        v[k + 1] = B[k * n + k + 1] + alpha;
+        for (let j = k + 2; j < n; j++) v[j] = B[k * n + j];
+        let vnorm = 0;
+        for (let j = k + 1; j < n; j++) vnorm += v[j] * v[j];
+        vnorm = Math.sqrt(vnorm);
+        if (vnorm > 1e-15) {
+          for (let j = k + 1; j < n; j++) v[j] /= vnorm;
+          // B = B * (I - 2vv^T)
+          for (let i = 0; i < n; i++) {
+            let dot = 0;
+            for (let j = k + 1; j < n; j++) dot += B[i * n + j] * v[j];
+            for (let j = k + 1; j < n; j++) B[i * n + j] -= 2 * dot * v[j];
+          }
+          // V = V * (I - 2vv^T)
+          for (let i = 0; i < n; i++) {
+            let dot = 0;
+            for (let j = k + 1; j < n; j++) dot += V[i * n + j] * v[j];
+            for (let j = k + 1; j < n; j++) V[i * n + j] -= 2 * dot * v[j];
+          }
+        }
+      }
+    }
+  }
+  return { U, B, V };
+}
+
+// Implicit shift QR step on bidiagonal
+function golubKahanStep(d, e, n) {
+  // Wilkinson shift
+  const dm = d[n - 2], dn = d[n - 1], em = e[n - 2];
+  const t1 = Math.sqrt((dm - dn) * (dm - dn) / 4 + em * em);
+  const mu = dn - em * em / ((dm - dn) / 2 + (dm > dn ? 1 : -1) * t1);
+
+  let y = d[0] * d[0] - mu;
+  let z = d[0] * e[0];
+
+  const cs = new Float64Array(n - 1);
+  const sn = new Float64Array(n - 1);
+
+  for (let k = 0; k < n - 1; k++) {
+    let r = Math.sqrt(y * y + z * z);
+    let c = y / r, s = z / r;
+    if (k > 0) e[k - 1] = r;
+
+    y = c * d[k] + s * e[k];
+    e[k] = -s * d[k] + c * e[k];
+    z = s * d[k + 1];
+    d[k + 1] = c * d[k + 1];
+    cs[k] = c; sn[k] = s;
+
+    r = Math.sqrt(y * y + z * z);
+    c = y / r; s = z / r;
+    d[k] = r;
+    y = c * e[k] + s * d[k + 1];
+    d[k + 1] = -s * e[k] + c * d[k + 1];
+    if (k < n - 2) {
+      z = s * e[k + 1];
+      e[k + 1] = c * e[k + 1];
+    }
+    cs[k] = c; sn[k] = s; // store last rotation too (we'll handle separately)
+  }
+  return { cs, sn };
+}
+
+// Full SVD: A(4x4) => U, S, V where A = U * diag(S) * V^T
+function svd4x4(A) {
+  const n = 4;
+  // Step 1: Bidiagonalize
+  const { U: Ub, B, V: Vb } = bidiagonalize(A);
+  // Extract bidiagonal: d (main), e (super)
+  const d = new Float64Array(n);
+  const e = new Float64Array(n); // e[0..n-2] are superdiag
+  for (let i = 0; i < n; i++) d[i] = B[i * n + i];
+  for (let i = 0; i < n - 1; i++) e[i] = B[i * n + i + 1];
+
+  // Accumulate rotations for left and right
+  let UL = new Float64Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+  let VR = new Float64Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+
+  // Step 2: QR iteration to zero out superdiagonal
+  const maxIter = 200;
+  for (let iter = 0; iter < maxIter; iter++) {
+    // Check convergence
+    let converged = true;
+    for (let i = 0; i < n - 1; i++) {
+      if (Math.abs(e[i]) > 1e-12 * (Math.abs(d[i]) + Math.abs(d[i + 1]) + 1e-30)) {
+        converged = false;
+        break;
+      }
+    }
+    if (converged) break;
+
+    // Find unreduced block
+    let p = n - 1, q = n - 1;
+    for (let i = n - 2; i >= 0; i--) {
+      if (Math.abs(e[i]) <= 1e-12 * (Math.abs(d[i]) + Math.abs(d[i + 1]) + 1e-30)) {
+        e[i] = 0;
+        q = i + 1;
+      } else {
+        p = i;
+        break;
+      }
+    }
+    if (p >= q) continue;
+
+    // Apply Golub-Kahan step on block [p..q]
+    const sz = q - p + 1;
+    const db = d.subarray(p, q + 1);
+    const eb = e.subarray(p, q);
+
+    // Wilkinson shift
+    const dm = db[sz - 2], dn = db[sz - 1], em = eb[sz - 2];
+    const dd = (dm * dm - dn * dn) / 2;
+    const mu = dn * dn - (em * em) / (dd / (Math.abs(dd) + Math.sqrt(dd * dd + em * em * dn * dn)) + (dd >= 0 ? 1 : -1) * Math.sqrt(dd * dd / (dn * dn + 1e-30) + em * em));
+
+    let y = db[0] * db[0] - (isFinite(mu) ? mu : 0);
+    let z = db[0] * eb[0];
+
+    for (let k = 0; k < sz - 1; k++) {
+      // Right Givens to zero z
+      let r = Math.hypot(y, z);
+      let c = r > 0 ? y / r : 1, s = r > 0 ? z / r : 0;
+
+      if (k > 0) eb[k - 1] = r;
+      y = c * db[k] + s * eb[k];
+      eb[k] = -s * db[k] + c * eb[k];
+      z = s * db[k + 1];
+      db[k + 1] *= c;
+
+      // Accumulate right rotation into VR
+      for (let i = 0; i < n; i++) {
+        const a = VR[i * n + p + k], b = VR[i * n + p + k + 1];
+        VR[i * n + p + k] = c * a + s * b;
+        VR[i * n + p + k + 1] = -s * a + c * b;
+      }
+
+      // Left Givens
+      r = Math.hypot(y, z);
+      c = r > 0 ? y / r : 1; s = r > 0 ? z / r : 0;
+      db[k] = r;
+      y = c * eb[k] + s * db[k + 1];
+      db[k + 1] = -s * eb[k] + c * db[k + 1];
+      if (k < sz - 2) {
+        z = s * eb[k + 1];
+        eb[k + 1] *= c;
+      }
+
+      // Accumulate left rotation into UL
+      for (let i = 0; i < n; i++) {
+        const a = UL[i * n + p + k], b = UL[i * n + p + k + 1];
+        UL[i * n + p + k] = c * a + s * b;
+        UL[i * n + p + k + 1] = -s * a + c * b;
+      }
+    }
+    eb[sz - 2] = 0; // should be ~0
+  }
+
+  // Step 3: Make singular values non-negative, accumulate Ub and Vb
+  for (let i = 0; i < n; i++) {
+    if (d[i] < 0) {
+      d[i] = -d[i];
+      for (let j = 0; j < n; j++) VR[j * n + i] = -VR[j * n + i];
+    }
+  }
+
+  // U_final = Ub * UL, V_final = Vb * VR
+  const U = mat4Mul(Ub, UL);
+  const V = mat4Mul(Vb, VR);
+
+  // Sort by descending singular value
+  const idx = [0, 1, 2, 3].sort((a, b) => d[b] - d[a]);
+  const S = new Float64Array([d[idx[0]], d[idx[1]], d[idx[2]], d[idx[3]]]);
+  const U2 = new Float64Array(16), V2 = new Float64Array(16);
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 4; j++) {
+      U2[j * 4 + i] = U[j * 4 + idx[i]];
+      V2[j * 4 + i] = V[j * 4 + idx[i]];
+    }
+  }
+  return { U: U2, S, V: V2 };
+}
+
+function svdReconstruct(U, S, V) {
+  // A = U * diag(S) * V^T
+  const r = new Float64Array(16);
+  for (let i = 0; i < 4; i++)
+    for (let j = 0; j < 4; j++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) sum += U[i * 4 + k] * S[k] * V[j * 4 + k];
+      r[i * 4 + j] = sum;
+    }
+  return r;
+}
+
+// ============================================================
+// Watermark Encoding/Decoding
+// ============================================================
+function textToBits(text) {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(text);
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  const bits = [];
+  for (const ch of hex) {
+    const nibble = parseInt(ch, 16);
+    for (let bit = 3; bit >= 0; bit--) {
+      bits.push((nibble >> bit) & 1);
+    }
+  }
+  return bits;
+}
+
+function bitsToText(bits) {
+  const threshold = 0.5;
+  let hex = '';
+  for (let i = 0; i + 3 < bits.length; i += 4) {
+    let nibble = 0;
+    for (let b = 0; b < 4; b++) {
+      nibble = (nibble << 1) | ((bits[i + b] > threshold) ? 1 : 0);
+    }
+    hex += nibble.toString(16);
+  }
+  const byteArr = [];
+  for (let i = 0; i + 1 < hex.length; i += 2) {
+    byteArr.push(parseInt(hex.substring(i, i + 2), 16));
+  }
+  try {
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    return decoder.decode(new Uint8Array(byteArr));
+  } catch (e) {
+    return '[解码失败]';
+  }
+}
+
+// ============================================================
+// Block Shuffle Permutation
+// ============================================================
+function generateBlockShuffles(seed, blockNum) {
+  const rng = mulberry32(seed);
+  const shuffles = [];
+  for (let i = 0; i < blockNum; i++) {
+    const vals = [];
+    for (let j = 0; j < 16; j++) vals.push({ v: rng(), idx: j });
+    vals.sort((a, b) => a.v - b.v || a.idx - b.idx);
+    shuffles.push(vals.map(x => x.idx));
+  }
+  return shuffles;
+}
+
+function shuffleArray(arr, perm) {
+  const out = new Float64Array(16);
+  for (let i = 0; i < 16; i++) out[i] = arr[perm[i]];
+  return out;
+}
+
+function unshuffleArray(arr, perm) {
+  const out = new Float64Array(16);
+  for (let i = 0; i < 16; i++) out[perm[i]] = arr[i];
+  return out;
+}
+
+// ============================================================
+// Watermark Bit Shuffle (Encryption)
+// ============================================================
+function shuffleWmBits(bits, password) {
+  const seed = hashString(password);
+  const rng = mulberry32(seed);
+  const indices = bits.map((_, i) => i);
+  // Fisher-Yates shuffle
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  const shuffled = new Array(bits.length);
+  for (let i = 0; i < bits.length; i++) shuffled[indices[i]] = bits[i];
+  return { bits: shuffled, indices };
+}
+
+function unshuffleWmBits(bits, password) {
+  const seed = hashString(password);
+  const rng = mulberry32(seed);
+  const n = bits.length;
+  const indices = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  const unshuffled = new Array(n);
+  for (let i = 0; i < n; i++) unshuffled[i] = bits[indices[i]];
+  return unshuffled;
+}
+
+// ============================================================
+// 1D K-Means Threshold
+// ============================================================
+function oneDimKMeans(values) {
+  let min = Infinity, max = -Infinity;
+  for (const v of values) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (max - min < 1e-10) return values.map(() => 0);
+  let c0 = min, c1 = max;
+  for (let iter = 0; iter < 300; iter++) {
+    const threshold = (c0 + c1) / 2;
+    let sum0 = 0, cnt0 = 0, sum1 = 0, cnt1 = 0;
+    for (const v of values) {
+      if (v > threshold) { sum1 += v; cnt1++; }
+      else { sum0 += v; cnt0++; }
+    }
+    if (cnt0 === 0 || cnt1 === 0) break;
+    const nc0 = sum0 / cnt0, nc1 = sum1 / cnt1;
+    if (Math.abs(nc0 - c0) < 1e-6 && Math.abs(nc1 - c1) < 1e-6) break;
+    c0 = nc0; c1 = nc1;
+  }
+  const threshold = (c0 + c1) / 2;
+  return values.map(v => v > threshold ? 1 : 0);
+}
+
+// ============================================================
+// Core: Embed Watermark
+// ============================================================
+async function embedWatermark(imgData, wmText, password, d1, d2, onProgress) {
+  const width = imgData.width, height = imgData.height;
+  const pixels = imgData.data;
+
+  // Convert to YUV channels
+  const Y = new Float64Array(width * height);
+  const U = new Float64Array(width * height);
+  const V = new Float64Array(width * height);
+  for (let i = 0; i < width * height; i++) {
+    const [y, u, v] = rgbToYUV(pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2]);
+    Y[i] = y; U[i] = u; V[i] = v;
+  }
+
+  // Pad to even dimensions
+  const pRows = height + (height % 2);
+  const pCols = width + (width % 2);
+
+  const padChannel = (ch) => {
+    const padded = new Float64Array(pRows * pCols);
+    for (let i = 0; i < height; i++)
+      for (let j = 0; j < width; j++)
+        padded[i * pCols + j] = ch[i * width + j];
+    return padded;
+  };
+
+  const channels = [padChannel(Y), padChannel(U), padChannel(V)];
+
+  // DWT on each channel
+  const dwtResults = channels.map(ch => haarDWT2D(ch, pRows, pCols));
+
+  // Calculate block count
+  const caRows = dwtResults[0].caRows;
+  const caCols = dwtResults[0].caCols;
+  const blockRows = Math.floor(caRows / 4);
+  const blockCols = Math.floor(caCols / 4);
+  const blockNum = blockRows * blockCols;
+
+  // Encode watermark
+  const rawBits = textToBits(wmText);
+  const { bits: wmBits } = shuffleWmBits(rawBits, password);
+  const wmSize = wmBits.length;
+
+  if (wmSize > blockNum * 3) {
+    throw new Error(`水印文本过长：需要 ${Math.ceil(wmSize / 4 / 2)} 字符以内的文本（当前容量约 ${Math.floor(blockNum * 3 / 4 / 2)} 字符）`);
+  }
+
+  // Generate block shuffles
+  const pwSeed = hashString(password + '_img');
+  const shuffles = generateBlockShuffles(pwSeed, blockNum);
+
+  const totalOps = 3 * blockNum;
+  let opsDone = 0;
+
+  // Embed in each channel
+  for (let c = 0; c < 3; c++) {
+    const ca = dwtResults[c].ca;
+    const channelOffset = c * blockNum;
+
+    for (let bi = 0; bi < blockNum; bi++) {
+      const br = Math.floor(bi / blockCols);
+      const bc = bi % blockCols;
+
+      // Extract 4x4 block from ca
+      const block = new Float64Array(16);
+      for (let r = 0; r < 4; r++)
+        for (let col = 0; col < 4; col++)
+          block[r * 4 + col] = ca[(br * 4 + r) * caCols + (bc * 4 + col)];
+
+      // DCT
+      let dctBlock = dct4x4(block);
+
+      // Shuffle
+      const perm = shuffles[bi];
+      let shuffled = shuffleArray(dctBlock, perm);
+
+      // SVD
+      const { U: svdU, S, V: svdV } = svd4x4(shuffled);
+
+      // Embed bit
+      const wmIdx = (channelOffset + bi) % wmSize;
+      const bit = wmBits[wmIdx];
+
+      S[0] = (Math.floor(S[0] / d1) + 0.25 + 0.5 * bit) * d1;
+      if (d2 > 0) {
+        S[1] = (Math.floor(S[1] / d2) + 0.25 + 0.5 * bit) * d2;
+      }
+
+      // Reconstruct SVD
+      let reconstructed = svdReconstruct(svdU, S, svdV);
+
+      // Unshuffle
+      let unshuffled = unshuffleArray(reconstructed, perm);
+
+      // IDCT
+      const idctBlock = idct4x4(unshuffled);
+
+      // Put back into ca
+      for (let r = 0; r < 4; r++)
+        for (let col = 0; col < 4; col++)
+          ca[(br * 4 + r) * caCols + (bc * 4 + col)] = idctBlock[r * 4 + col];
+
+      opsDone++;
+      if (opsDone % Math.max(1, Math.floor(totalOps / 60)) === 0) {
+        onProgress(opsDone / totalOps, `处理通道 ${c + 1}/3，块 ${bi + 1}/${blockNum}`);
+        await yieldUI();
+      }
+    }
+  }
+
+  onProgress(0.9, '重建图像...');
+  await yieldUI();
+
+  // Inverse DWT on each channel
+  const reconstructed = dwtResults.map(r =>
+    haarIDWT2D(r.ca, r.ch, r.cv, r.cd, r.caRows, r.caCols)
+  );
+
+  // Build output image
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = width;
+  outCanvas.height = height;
+  const outCtx = outCanvas.getContext('2d');
+  const outData = outCtx.createImageData(width, height);
+
+  for (let i = 0; i < height; i++) {
+    for (let j = 0; j < width; j++) {
+      const pi = i * pCols + j;
+      const [r, g, b] = yuvToRGB(reconstructed[0][pi], reconstructed[1][pi], reconstructed[2][pi]);
+      const oi = (i * width + j) * 4;
+      outData.data[oi] = Math.max(0, Math.min(255, Math.round(r)));
+      outData.data[oi + 1] = Math.max(0, Math.min(255, Math.round(g)));
+      outData.data[oi + 2] = Math.max(0, Math.min(255, Math.round(b)));
+      outData.data[oi + 3] = 255;
+    }
+  }
+
+  outCtx.putImageData(outData, 0, 0);
+  onProgress(1, '完成');
+  return { canvas: outCanvas, wmLen: wmText.length, blockNum, wmSize };
+}
+
+// ============================================================
+// Core: Extract Watermark
+// ============================================================
+async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgress) {
+  const width = imgData.width, height = imgData.height;
+  const pixels = imgData.data;
+
+  // Convert to YUV
+  const Y = new Float64Array(width * height);
+  const U = new Float64Array(width * height);
+  const V = new Float64Array(width * height);
+  for (let i = 0; i < width * height; i++) {
+    const [y, u, v] = rgbToYUV(pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2]);
+    Y[i] = y; U[i] = u; V[i] = v;
+  }
+
+  // Pad to even
+  const pRows = height + (height % 2);
+  const pCols = width + (width % 2);
+
+  const padChannel = (ch) => {
+    const padded = new Float64Array(pRows * pCols);
+    for (let i = 0; i < height; i++)
+      for (let j = 0; j < width; j++)
+        padded[i * pCols + j] = ch[i * width + j];
+    return padded;
+  };
+
+  const channels = [padChannel(Y), padChannel(U), padChannel(V)];
+  const dwtResults = channels.map(ch => haarDWT2D(ch, pRows, pCols));
+
+  const caRows = dwtResults[0].caRows;
+  const caCols = dwtResults[0].caCols;
+  const blockRows = Math.floor(caRows / 4);
+  const blockCols = Math.floor(caCols / 4);
+  const blockNum = blockRows * blockCols;
+
+  // Compute wm_size from byte count
+  // Each byte -> 2 hex chars -> 8 bits
+  const wmSize = wmByteCount * 8;
+
+  // Generate block shuffles
+  const pwSeed = hashString(password + '_img');
+  const shuffles = generateBlockShuffles(pwSeed, blockNum);
+
+  const totalOps = 3 * blockNum;
+  let opsDone = 0;
+
+  // Extract from each channel
+  const allWmValues = new Float64Array(3 * blockNum);
+
+  for (let c = 0; c < 3; c++) {
+    const ca = dwtResults[c].ca;
+    const channelOffset = c * blockNum;
+
+    for (let bi = 0; bi < blockNum; bi++) {
+      const br = Math.floor(bi / blockCols);
+      const bc = bi % blockCols;
+
+      const block = new Float64Array(16);
+      for (let r = 0; r < 4; r++)
+        for (let col = 0; col < 4; col++)
+          block[r * 4 + col] = ca[(br * 4 + r) * caCols + (bc * 4 + col)];
+
+      let dctBlock = dct4x4(block);
+      const perm = shuffles[bi];
+      let shuffled = shuffleArray(dctBlock, perm);
+      const { S } = svd4x4(shuffled);
+
+      let wmVal = (S[0] % d1 > d1 / 2) ? 1 : 0;
+      if (d2 > 0) {
+        const tmp = (S[1] % d2 > d2 / 2) ? 1 : 0;
+        wmVal = (wmVal * 3 + tmp) / 4;
+      }
+
+      allWmValues[channelOffset + bi] = wmVal;
+
+      opsDone++;
+      if (opsDone % Math.max(1, Math.floor(totalOps / 60)) === 0) {
+        onProgress(opsDone / totalOps, `处理通道 ${c + 1}/3，块 ${bi + 1}/${blockNum}`);
+        await yieldUI();
+      }
+    }
+  }
+
+  onProgress(0.9, '解码水印...');
+  await yieldUI();
+
+  // Average by watermark position
+  const wmAvg = new Float64Array(wmSize);
+  for (let p = 0; p < 3 * blockNum; p++) {
+    wmAvg[p % wmSize] += allWmValues[p];
+  }
+  const reps = Math.floor(3 * blockNum / wmSize);
+  for (let i = 0; i < wmSize; i++) {
+    const count = Math.floor((3 * blockNum - i + wmSize - 1) / wmSize);
+    wmAvg[i] /= count;
+  }
+
+  // K-means threshold
+  const avgArr = Array.from(wmAvg);
+  const bits = oneDimKMeans(avgArr);
+
+  // Unshuffle (decrypt)
+  const unshuffledBits = unshuffleWmBits(bits, password);
+
+  // Decode to text
+  const text = bitsToText(unshuffledBits);
+
+  onProgress(1, '完成');
+  return text;
+}
+
+// ============================================================
+// UI Logic
+// ============================================================
+(function() {
+  // State
+  let embedImgData = null;
+  let extractImgData = null;
+  let embedOrigURL = null;
+  let embedWmURL = null;
+
+  // Elements
+  const $ = id => document.getElementById(id);
+  const toast = (msg, dur = 2500) => {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('visible');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('visible'), dur);
+  };
+
+  // Tab switching
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      $('panel-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Slider value display
+  ['embed-d1', 'embed-d2', 'extract-d1', 'extract-d2'].forEach(id => {
+    const slider = $(id);
+    const valEl = $(id + '-val');
+    slider.addEventListener('input', () => { valEl.textContent = slider.value; });
+  });
+
+  // Real-time UTF-8 byte count for watermark text
+  const wmTextInput = $('embed-wm-text');
+  const wmBytesDisplay = $('embed-wm-bytes');
+  wmTextInput.addEventListener('input', () => {
+    const text = wmTextInput.value;
+    const byteCount = new TextEncoder().encode(text).length;
+    wmBytesDisplay.textContent = `UTF-8 字节数：${byteCount}`;
+  });
+
+  // File upload helper
+  function setupUpload(zoneId, fileId, callback) {
+    const zone = $(zoneId);
+    const input = $(fileId);
+    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    input.addEventListener('change', () => {
+      if (input.files.length) handleFile(input.files[0]);
+    });
+    function handleFile(file) {
+      if (!file.type.startsWith('image/')) { toast('请上传图片文件'); return; }
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          callback(ctx.getImageData(0, 0, canvas.width, canvas.height), e.target.result);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  // Embed upload
+  setupUpload('embed-upload-zone', 'embed-file', (imgData, url) => {
+    embedImgData = imgData;
+    embedOrigURL = url;
+    $('btn-embed').disabled = false;
+    $('embed-preview').classList.remove('visible');
+    $('btn-download').style.display = 'none';
+    $('btn-download').disabled = true;
+
+    // Show capacity
+    const pRows = imgData.height + (imgData.height % 2);
+    const pCols = imgData.width + (imgData.width % 2);
+    const caRows = pRows >> 1, caCols = pCols >> 1;
+    const blockNum = Math.floor(caRows / 4) * Math.floor(caCols / 4);
+    const totalBits = blockNum * 3;
+    const maxChars = Math.floor(totalBits / 8); // approx bytes
+    $('embed-capacity').textContent = `图片 ${imgData.width}x${imgData.height}，可嵌入约 ${maxChars} 字节的水印数据`;
+
+    // Show original preview
+    $('embed-img-orig').src = url;
+  });
+
+  // Extract upload
+  setupUpload('extract-upload-zone', 'extract-file', (imgData, url) => {
+    extractImgData = imgData;
+    $('btn-extract').disabled = false;
+    $('extract-result-area').classList.remove('visible');
+  });
+
+  // Embed button
+  $('btn-embed').addEventListener('click', async () => {
+    const wmText = $('embed-wm-text').value.trim();
+    const password = $('embed-password').value;
+    const d1 = parseInt($('embed-d1').value);
+    const d2 = parseInt($('embed-d2').value);
+
+    if (!wmText) { toast('请输入水印文本'); return; }
+    if (!password) { toast('请输入密码'); return; }
+    if (!embedImgData) { toast('请先上传图片'); return; }
+
+    $('btn-embed').disabled = true;
+    $('embed-progress-wrap').classList.add('visible');
+    $('embed-preview').classList.remove('visible');
+    $('btn-download').style.display = 'none';
+
+    try {
+      const result = await embedWatermark(embedImgData, wmText, password, d1, d2, (p, text) => {
+        $('embed-progress').style.width = (p * 100).toFixed(1) + '%';
+        $('embed-progress-text').textContent = text;
+      });
+
+      embedWmURL = result.canvas.toDataURL('image/png');
+      $('embed-img-wm').src = embedWmURL;
+      $('embed-preview').classList.add('visible');
+      $('btn-download').style.display = '';
+      $('btn-download').disabled = false;
+
+      const byteCount = new TextEncoder().encode(wmText).length;
+      toast(`水印嵌入成功（字节数：${byteCount}，提取时填写）`, 4000);
+    } catch (e) {
+      toast(e.message || '嵌入失败');
+    } finally {
+      $('btn-embed').disabled = false;
+      $('embed-progress-wrap').classList.remove('visible');
+    }
+  });
+
+  // Download button
+  $('btn-download').addEventListener('click', () => {
+    if (!embedWmURL) return;
+    const a = document.createElement('a');
+    a.href = embedWmURL;
+    a.download = 'watermarked_image.png';
+    a.click();
+  });
+
+  // Extract button
+  $('btn-extract').addEventListener('click', async () => {
+    const password = $('extract-password').value;
+    const wmLen = parseInt($('extract-wm-len').value);
+    const d1 = parseInt($('extract-d1').value);
+    const d2 = parseInt($('extract-d2').value);
+
+    if (!password) { toast('请输入密码'); return; }
+    if (!wmLen || wmLen < 1) { toast('请输入有效的水印字节数'); return; }
+    if (!extractImgData) { toast('请先上传图片'); return; }
+
+    $('btn-extract').disabled = true;
+    $('extract-progress-wrap').classList.add('visible');
+    $('extract-result-area').classList.remove('visible');
+
+    try {
+      const text = await extractWatermark(extractImgData, wmLen, password, d1, d2, (p, t) => {
+        $('extract-progress').style.width = (p * 100).toFixed(1) + '%';
+        $('extract-progress-text').textContent = t;
+      });
+
+      $('extract-result-text').textContent = text;
+      $('extract-result-area').classList.add('visible');
+      toast('水印提取完成');
+    } catch (e) {
+      toast(e.message || '提取失败');
+    } finally {
+      $('btn-extract').disabled = false;
+      $('extract-progress-wrap').classList.remove('visible');
+    }
+  });
+})();
+</script>
+</body>
+</html>
