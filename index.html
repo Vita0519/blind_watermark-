@@ -129,6 +129,10 @@ body {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
+.upload-zone.uploaded {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 6%, transparent);
+}
 .upload-zone svg {
   width: 36px; height: 36px;
   color: var(--border);
@@ -265,6 +269,15 @@ body {
   margin-top: 5px;
   font-variant-numeric: tabular-nums;
 }
+.upload-status {
+  display: none;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.upload-status.visible { display: block; }
+.upload-status.success { color: var(--success); }
 .preview-area {
   margin-top: 18px;
   display: none;
@@ -435,6 +448,7 @@ body {
         <div class="uz-hint">支持 JPG / PNG / WebP</div>
       </div>
       <input type="file" id="embed-file" accept="image/*" hidden>
+      <div class="upload-status" id="embed-upload-status"></div>
       <div class="capacity-info" id="embed-capacity"></div>
     </div>
 
@@ -500,6 +514,7 @@ body {
         <div class="uz-hint">支持 JPG / PNG / WebP</div>
       </div>
       <input type="file" id="extract-file" accept="image/*" hidden>
+      <div class="upload-status" id="extract-upload-status"></div>
     </div>
 
     <div class="card">
@@ -755,254 +770,78 @@ function idct4x4(block) {
 }
 
 // ============================================================
-// SVD for 4x4 matrices (Golub-Kahan + QR iteration)
+// SVD for 4x4 matrices (One-sided Jacobi method)
 // ============================================================
-function mat4Mul(a, b) {
-  const c = new Float64Array(16);
-  for (let i = 0; i < 4; i++)
-    for (let k = 0; k < 4; k++) {
-      const aik = a[i * 4 + k];
-      if (aik === 0) continue;
-      for (let j = 0; j < 4; j++)
-        c[i * 4 + j] += aik * b[k * 4 + j];
-    }
-  return c;
-}
-
-function mat4Transpose(m) {
-  const r = new Float64Array(16);
-  for (let i = 0; i < 4; i++)
-    for (let j = 0; j < 4; j++)
-      r[j * 4 + i] = m[i * 4 + j];
-  return r;
-}
-
-// Bidiagonalize 4x4 matrix A = U_b * B * V_b^T using Householder
-function bidiagonalize(A) {
-  const n = 4;
-  const U = new Float64Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
-  const V = new Float64Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
-  const B = new Float64Array(A);
-
-  for (let k = 0; k < n; k++) {
-    // Left Householder on column k, rows k..n-1
-    let norm = 0;
-    for (let i = k; i < n; i++) norm += B[i * n + k] * B[i * n + k];
-    norm = Math.sqrt(norm);
-    if (norm > 1e-15) {
-      const sign = B[k * n + k] >= 0 ? 1 : -1;
-      const alpha = sign * norm;
-      const v = new Float64Array(n);
-      v[k] = B[k * n + k] + alpha;
-      for (let i = k + 1; i < n; i++) v[i] = B[i * n + k];
-      let vnorm = 0;
-      for (let i = k; i < n; i++) vnorm += v[i] * v[i];
-      vnorm = Math.sqrt(vnorm);
-      if (vnorm > 1e-15) {
-        for (let i = k; i < n; i++) v[i] /= vnorm;
-        // B = (I - 2vv^T) * B
-        for (let j = k; j < n; j++) {
-          let dot = 0;
-          for (let i = k; i < n; i++) dot += v[i] * B[i * n + j];
-          for (let i = k; i < n; i++) B[i * n + j] -= 2 * v[i] * dot;
-        }
-        // U = U * (I - 2vv^T)
-        for (let i = 0; i < n; i++) {
-          let dot = 0;
-          for (let j = k; j < n; j++) dot += U[i * n + j] * v[j];
-          for (let j = k; j < n; j++) U[i * n + j] -= 2 * dot * v[j];
-        }
-      }
-    }
-    // Right Householder on row k, columns k+1..n-1
-    if (k < n - 1) {
-      let norm2 = 0;
-      for (let j = k + 1; j < n; j++) norm2 += B[k * n + j] * B[k * n + j];
-      norm2 = Math.sqrt(norm2);
-      if (norm2 > 1e-15) {
-        const sign = B[k * n + k + 1] >= 0 ? 1 : -1;
-        const alpha = sign * norm2;
-        const v = new Float64Array(n);
-        v[k + 1] = B[k * n + k + 1] + alpha;
-        for (let j = k + 2; j < n; j++) v[j] = B[k * n + j];
-        let vnorm = 0;
-        for (let j = k + 1; j < n; j++) vnorm += v[j] * v[j];
-        vnorm = Math.sqrt(vnorm);
-        if (vnorm > 1e-15) {
-          for (let j = k + 1; j < n; j++) v[j] /= vnorm;
-          // B = B * (I - 2vv^T)
-          for (let i = 0; i < n; i++) {
-            let dot = 0;
-            for (let j = k + 1; j < n; j++) dot += B[i * n + j] * v[j];
-            for (let j = k + 1; j < n; j++) B[i * n + j] -= 2 * dot * v[j];
-          }
-          // V = V * (I - 2vv^T)
-          for (let i = 0; i < n; i++) {
-            let dot = 0;
-            for (let j = k + 1; j < n; j++) dot += V[i * n + j] * v[j];
-            for (let j = k + 1; j < n; j++) V[i * n + j] -= 2 * dot * v[j];
-          }
-        }
-      }
-    }
-  }
-  return { U, B, V };
-}
-
-// Implicit shift QR step on bidiagonal
-function golubKahanStep(d, e, n) {
-  // Wilkinson shift
-  const dm = d[n - 2], dn = d[n - 1], em = e[n - 2];
-  const t1 = Math.sqrt((dm - dn) * (dm - dn) / 4 + em * em);
-  const mu = dn - em * em / ((dm - dn) / 2 + (dm > dn ? 1 : -1) * t1);
-
-  let y = d[0] * d[0] - mu;
-  let z = d[0] * e[0];
-
-  const cs = new Float64Array(n - 1);
-  const sn = new Float64Array(n - 1);
-
-  for (let k = 0; k < n - 1; k++) {
-    let r = Math.sqrt(y * y + z * z);
-    let c = y / r, s = z / r;
-    if (k > 0) e[k - 1] = r;
-
-    y = c * d[k] + s * e[k];
-    e[k] = -s * d[k] + c * e[k];
-    z = s * d[k + 1];
-    d[k + 1] = c * d[k + 1];
-    cs[k] = c; sn[k] = s;
-
-    r = Math.sqrt(y * y + z * z);
-    c = y / r; s = z / r;
-    d[k] = r;
-    y = c * e[k] + s * d[k + 1];
-    d[k + 1] = -s * e[k] + c * d[k + 1];
-    if (k < n - 2) {
-      z = s * e[k + 1];
-      e[k + 1] = c * e[k + 1];
-    }
-    cs[k] = c; sn[k] = s; // store last rotation too (we'll handle separately)
-  }
-  return { cs, sn };
-}
-
-// Full SVD: A(4x4) => U, S, V where A = U * diag(S) * V^T
 function svd4x4(A) {
   const n = 4;
-  // Step 1: Bidiagonalize
-  const { U: Ub, B, V: Vb } = bidiagonalize(A);
-  // Extract bidiagonal: d (main), e (super)
-  const d = new Float64Array(n);
-  const e = new Float64Array(n); // e[0..n-2] are superdiag
-  for (let i = 0; i < n; i++) d[i] = B[i * n + i];
-  for (let i = 0; i < n - 1; i++) e[i] = B[i * n + i + 1];
+  const W = new Float64Array(A); // working copy (will become U*diag(S))
+  const V = new Float64Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
 
-  // Accumulate rotations for left and right
-  let UL = new Float64Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
-  let VR = new Float64Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+  // One-sided Jacobi: rotate column pairs of W until all columns are orthogonal
+  const maxSweeps = 100;
+  for (let sweep = 0; sweep < maxSweeps; sweep++) {
+    let offNorm = 0;
+    for (let p = 0; p < n - 1; p++) {
+      for (let q = p + 1; q < n; q++) {
+        // Gram matrix entries for columns p and q
+        let alpha = 0, beta = 0, gamma = 0;
+        for (let i = 0; i < n; i++) {
+          alpha += W[i * n + p] * W[i * n + p];
+          beta  += W[i * n + q] * W[i * n + q];
+          gamma += W[i * n + p] * W[i * n + q];
+        }
+        offNorm += gamma * gamma;
+        if (Math.abs(gamma) < 1e-15 * Math.sqrt(alpha * beta + 1e-30)) continue;
 
-  // Step 2: QR iteration to zero out superdiagonal
-  const maxIter = 200;
-  for (let iter = 0; iter < maxIter; iter++) {
-    // Check convergence
-    let converged = true;
-    for (let i = 0; i < n - 1; i++) {
-      if (Math.abs(e[i]) > 1e-12 * (Math.abs(d[i]) + Math.abs(d[i + 1]) + 1e-30)) {
-        converged = false;
-        break;
+        // Jacobi rotation angle to zero gamma
+        const zeta = (beta - alpha) / (2 * gamma);
+        const t = (zeta >= 0 ? 1 : -1) / (Math.abs(zeta) + Math.sqrt(1 + zeta * zeta));
+        const cs = 1 / Math.sqrt(1 + t * t);
+        const sn = cs * t;
+
+        // Apply rotation to columns of W
+        for (let i = 0; i < n; i++) {
+          const wp = W[i * n + p], wq = W[i * n + q];
+          W[i * n + p] = cs * wp - sn * wq;
+          W[i * n + q] = sn * wp + cs * wq;
+        }
+        // Accumulate rotation into V
+        for (let i = 0; i < n; i++) {
+          const vp = V[i * n + p], vq = V[i * n + q];
+          V[i * n + p] = cs * vp - sn * vq;
+          V[i * n + q] = sn * vp + cs * vq;
+        }
       }
     }
-    if (converged) break;
-
-    // Find unreduced block
-    let p = n - 1, q = n - 1;
-    for (let i = n - 2; i >= 0; i--) {
-      if (Math.abs(e[i]) <= 1e-12 * (Math.abs(d[i]) + Math.abs(d[i + 1]) + 1e-30)) {
-        e[i] = 0;
-        q = i + 1;
-      } else {
-        p = i;
-        break;
-      }
-    }
-    if (p >= q) continue;
-
-    // Apply Golub-Kahan step on block [p..q]
-    const sz = q - p + 1;
-    const db = d.subarray(p, q + 1);
-    const eb = e.subarray(p, q);
-
-    // Wilkinson shift
-    const dm = db[sz - 2], dn = db[sz - 1], em = eb[sz - 2];
-    const dd = (dm * dm - dn * dn) / 2;
-    const mu = dn * dn - (em * em) / (dd / (Math.abs(dd) + Math.sqrt(dd * dd + em * em * dn * dn)) + (dd >= 0 ? 1 : -1) * Math.sqrt(dd * dd / (dn * dn + 1e-30) + em * em));
-
-    let y = db[0] * db[0] - (isFinite(mu) ? mu : 0);
-    let z = db[0] * eb[0];
-
-    for (let k = 0; k < sz - 1; k++) {
-      // Right Givens to zero z
-      let r = Math.hypot(y, z);
-      let c = r > 0 ? y / r : 1, s = r > 0 ? z / r : 0;
-
-      if (k > 0) eb[k - 1] = r;
-      y = c * db[k] + s * eb[k];
-      eb[k] = -s * db[k] + c * eb[k];
-      z = s * db[k + 1];
-      db[k + 1] *= c;
-
-      // Accumulate right rotation into VR
-      for (let i = 0; i < n; i++) {
-        const a = VR[i * n + p + k], b = VR[i * n + p + k + 1];
-        VR[i * n + p + k] = c * a + s * b;
-        VR[i * n + p + k + 1] = -s * a + c * b;
-      }
-
-      // Left Givens
-      r = Math.hypot(y, z);
-      c = r > 0 ? y / r : 1; s = r > 0 ? z / r : 0;
-      db[k] = r;
-      y = c * eb[k] + s * db[k + 1];
-      db[k + 1] = -s * eb[k] + c * db[k + 1];
-      if (k < sz - 2) {
-        z = s * eb[k + 1];
-        eb[k + 1] *= c;
-      }
-
-      // Accumulate left rotation into UL
-      for (let i = 0; i < n; i++) {
-        const a = UL[i * n + p + k], b = UL[i * n + p + k + 1];
-        UL[i * n + p + k] = c * a + s * b;
-        UL[i * n + p + k + 1] = -s * a + c * b;
-      }
-    }
-    eb[sz - 2] = 0; // should be ~0
+    if (offNorm < 1e-28) break;
   }
 
-  // Step 3: Make singular values non-negative, accumulate Ub and Vb
-  for (let i = 0; i < n; i++) {
-    if (d[i] < 0) {
-      d[i] = -d[i];
-      for (let j = 0; j < n; j++) VR[j * n + i] = -VR[j * n + i];
+  // Extract singular values (column norms of W) and build U
+  const S = new Float64Array(n);
+  const U = new Float64Array(n * n);
+  for (let j = 0; j < n; j++) {
+    let norm = 0;
+    for (let i = 0; i < n; i++) norm += W[i * n + j] * W[i * n + j];
+    S[j] = Math.sqrt(norm);
+    if (S[j] > 1e-14) {
+      for (let i = 0; i < n; i++) U[i * n + j] = W[i * n + j] / S[j];
+    } else {
+      // Zero singular value: set U column to standard basis vector
+      for (let i = 0; i < n; i++) U[i * n + j] = (i === j) ? 1 : 0;
     }
   }
-
-  // U_final = Ub * UL, V_final = Vb * VR
-  const U = mat4Mul(Ub, UL);
-  const V = mat4Mul(Vb, VR);
 
   // Sort by descending singular value
-  const idx = [0, 1, 2, 3].sort((a, b) => d[b] - d[a]);
-  const S = new Float64Array([d[idx[0]], d[idx[1]], d[idx[2]], d[idx[3]]]);
-  const U2 = new Float64Array(16), V2 = new Float64Array(16);
-  for (let i = 0; i < 4; i++) {
-    for (let j = 0; j < 4; j++) {
-      U2[j * 4 + i] = U[j * 4 + idx[i]];
-      V2[j * 4 + i] = V[j * 4 + idx[i]];
+  const idx = [0, 1, 2, 3].sort((a, b) => S[b] - S[a]);
+  const Ss = new Float64Array([S[idx[0]], S[idx[1]], S[idx[2]], S[idx[3]]]);
+  const Us = new Float64Array(n * n), Vs = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      Us[j * n + i] = U[j * n + idx[i]];
+      Vs[j * n + i] = V[j * n + idx[i]];
     }
   }
-  return { U: U2, S, V: V2 };
+  return { U: Us, S: Ss, V: Vs };
 }
 
 function svdReconstruct(U, S, V) {
@@ -1020,40 +859,246 @@ function svdReconstruct(U, S, V) {
 // ============================================================
 // Watermark Encoding/Decoding
 // ============================================================
-function textToBits(text) {
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(text);
-  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+const WATERMARK_MAGIC = [0x42, 0x57, 0x4D, 0x31]; // BWM1
+const WATERMARK_OVERHEAD_BYTES = 12;
+let crc32Table = null;
+
+function getCrc32Table() {
+  if (crc32Table) return crc32Table;
+  crc32Table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    crc32Table[i] = c >>> 0;
+  }
+  return crc32Table;
+}
+
+function crc32(bytes) {
+  const table = getCrc32Table();
+  let crc = 0xFFFFFFFF;
+  for (const byte of bytes) {
+    crc = table[(crc ^ byte) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function bytesToBits(bytes) {
   const bits = [];
-  for (const ch of hex) {
-    const nibble = parseInt(ch, 16);
-    for (let bit = 3; bit >= 0; bit--) {
-      bits.push((nibble >> bit) & 1);
+  for (const byte of bytes) {
+    for (let bit = 7; bit >= 0; bit--) {
+      bits.push((byte >> bit) & 1);
     }
   }
   return bits;
 }
 
-function bitsToText(bits) {
-  const threshold = 0.5;
-  let hex = '';
-  for (let i = 0; i + 3 < bits.length; i += 4) {
-    let nibble = 0;
-    for (let b = 0; b < 4; b++) {
-      nibble = (nibble << 1) | ((bits[i + b] > threshold) ? 1 : 0);
+function bitsToBytes(bits) {
+  const bytes = new Uint8Array(Math.floor(bits.length / 8));
+  for (let i = 0; i < bytes.length; i++) {
+    let byte = 0;
+    for (let bit = 0; bit < 8; bit++) {
+      byte = (byte << 1) | (bits[i * 8 + bit] ? 1 : 0);
     }
-    hex += nibble.toString(16);
+    bytes[i] = byte;
   }
-  const byteArr = [];
-  for (let i = 0; i + 1 < hex.length; i += 2) {
-    byteArr.push(parseInt(hex.substring(i, i + 2), 16));
+  return bytes;
+}
+
+function textToBits(text) {
+  const payload = new TextEncoder().encode(text);
+  const packet = new Uint8Array(WATERMARK_OVERHEAD_BYTES + payload.length);
+  packet.set(WATERMARK_MAGIC, 0);
+  packet[4] = (payload.length >>> 24) & 0xFF;
+  packet[5] = (payload.length >>> 16) & 0xFF;
+  packet[6] = (payload.length >>> 8) & 0xFF;
+  packet[7] = payload.length & 0xFF;
+  packet.set(payload, 8);
+  const checksum = crc32(payload);
+  const crcOffset = 8 + payload.length;
+  packet[crcOffset] = (checksum >>> 24) & 0xFF;
+  packet[crcOffset + 1] = (checksum >>> 16) & 0xFF;
+  packet[crcOffset + 2] = (checksum >>> 8) & 0xFF;
+  packet[crcOffset + 3] = checksum & 0xFF;
+  return bytesToBits(packet);
+}
+
+function decodePacketBytes(bytes) {
+  for (let i = 0; i < WATERMARK_MAGIC.length; i++) {
+    if (bytes[i] !== WATERMARK_MAGIC[i]) throw new Error('未识别到新版水印头');
   }
+  const payloadLen = (
+    ((bytes[4] << 24) >>> 0) |
+    (bytes[5] << 16) |
+    (bytes[6] << 8) |
+    bytes[7]
+  ) >>> 0;
+  if (payloadLen > bytes.length - WATERMARK_OVERHEAD_BYTES) {
+    throw new Error('水印长度校验失败');
+  }
+  const payload = bytes.slice(8, 8 + payloadLen);
+  const crcOffset = 8 + payloadLen;
+  const expected = (
+    ((bytes[crcOffset] << 24) >>> 0) |
+    (bytes[crcOffset + 1] << 16) |
+    (bytes[crcOffset + 2] << 8) |
+    bytes[crcOffset + 3]
+  ) >>> 0;
+  if (crc32(payload) !== expected) throw new Error('水印校验失败');
+  return new TextDecoder('utf-8', { fatal: true }).decode(payload);
+}
+
+function decodeLegacyBits(bits) {
+  const bytes = bitsToBytes(bits);
+  if (!bytes.length) throw new Error('旧版水印为空');
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  if (!text.trim()) throw new Error('旧版水印为空白');
+  const hasInvalidChar = Array.from(text).some(ch => {
+    const code = ch.charCodeAt(0);
+    return ch === '�' || code === 0x7F || (code < 0x20 && ![0x09, 0x0A, 0x0D].includes(code));
+  });
+  if (hasInvalidChar) throw new Error('旧版水印包含无效字符');
+  return text;
+}
+
+function invertBits(bits) {
+  return bits.map(bit => bit ? 0 : 1);
+}
+
+function bitCandidates(values) {
+  const valueArr = Array.from(values);
+  const kmeans = oneDimKMeans(valueArr);
+  const fixed = valueArr.map(v => v > 0.5 ? 1 : 0);
+  const confidence = valueArr.map(v => Math.abs(v - 0.5));
+  return [
+    { bits: kmeans, confidence },
+    { bits: fixed, confidence },
+    { bits: invertBits(kmeans), confidence },
+    { bits: invertBits(fixed), confidence }
+  ];
+}
+
+function tryDecodeWithBitRepair(bits, confidence, decoder) {
   try {
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    return decoder.decode(new Uint8Array(byteArr));
-  } catch (e) {
-    return '[解码失败]';
+    return decoder(bits);
+  } catch (e) {}
+
+  const weak = bits
+    .map((_, index) => ({ index, confidence: confidence[index] ?? 0 }))
+    .sort((a, b) => a.confidence - b.confidence)
+    .slice(0, 24)
+    .map(item => item.index);
+
+  const tryFlip = (indices) => {
+    const repaired = bits.slice();
+    for (const index of indices) repaired[index] = repaired[index] ? 0 : 1;
+    try {
+      return decoder(repaired);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  for (const a of weak) {
+    const text = tryFlip([a]);
+    if (text !== null) return text;
   }
+  for (let i = 0; i < weak.length; i++) {
+    for (let j = i + 1; j < weak.length; j++) {
+      const text = tryFlip([weak[i], weak[j]]);
+      if (text !== null) return text;
+    }
+  }
+  for (let i = 0; i < weak.length; i++) {
+    for (let j = i + 1; j < weak.length; j++) {
+      for (let k = j + 1; k < weak.length; k++) {
+        const text = tryFlip([weak[i], weak[j], weak[k]]);
+        if (text !== null) return text;
+      }
+    }
+  }
+  return null;
+}
+
+function stableRepeatCount(totalSlots, bitCount) {
+  const maxRepeat = Math.floor(totalSlots / bitCount);
+  if (maxRepeat >= 9) return 9;
+  if (maxRepeat >= 7) return 7;
+  if (maxRepeat >= 5) return 5;
+  if (maxRepeat >= 3) return 3;
+  return maxRepeat >= 1 ? 1 : 0;
+}
+
+function stablePositions(width, height, bitCount, password) {
+  const totalSlots = width * height * 3;
+  const repeat = stableRepeatCount(totalSlots, bitCount);
+  if (repeat < 1) return { positions: [], repeat };
+  const needed = bitCount * repeat;
+  const rng = mulberry32(hashString(`${password}_stable_lsb_${width}x${height}_${bitCount}`));
+  const used = new Set();
+  const positions = [];
+  while (positions.length < needed) {
+    const pos = Math.floor(rng() * totalSlots);
+    if (used.has(pos)) continue;
+    used.add(pos);
+    positions.push(pos);
+  }
+  return { positions, repeat };
+}
+
+function setStableBit(data, position, bit) {
+  const pixel = Math.floor(position / 3);
+  const channel = position % 3;
+  const index = pixel * 4 + channel;
+  data[index] = (data[index] & 0xFE) | bit;
+}
+
+function getStableBit(data, position) {
+  const pixel = Math.floor(position / 3);
+  const channel = position % 3;
+  return data[pixel * 4 + channel] & 1;
+}
+
+function embedStableWatermark(imgData, bits, password) {
+  const { positions, repeat } = stablePositions(imgData.width, imgData.height, bits.length, password);
+  if (repeat < 1) throw new Error('图片容量不足，无法写入稳定水印通道');
+  let offset = 0;
+  for (let i = 0; i < bits.length; i++) {
+    for (let r = 0; r < repeat; r++) {
+      setStableBit(imgData.data, positions[offset++], bits[i]);
+    }
+  }
+}
+
+function extractStableBits(imgData, bitCount, password) {
+  const { positions, repeat } = stablePositions(imgData.width, imgData.height, bitCount, password);
+  if (repeat < 1) return null;
+  const bits = new Array(bitCount);
+  const confidence = new Array(bitCount);
+  let offset = 0;
+  for (let i = 0; i < bitCount; i++) {
+    let ones = 0;
+    for (let r = 0; r < repeat; r++) {
+      ones += getStableBit(imgData.data, positions[offset++]);
+    }
+    const ratio = ones / repeat;
+    bits[i] = ratio >= 0.5 ? 1 : 0;
+    confidence[i] = Math.abs(ratio - 0.5);
+  }
+  return { bits, confidence };
+}
+
+function extractStableWatermark(imgData, wmByteCount, password) {
+  const packetBitSize = (wmByteCount + WATERMARK_OVERHEAD_BYTES) * 8;
+  const packet = extractStableBits(imgData, packetBitSize, password);
+  if (!packet) return null;
+  return tryDecodeWithBitRepair(
+    packet.bits,
+    packet.confidence,
+    bits => decodePacketBytes(bitsToBytes(bits))
+  );
 }
 
 // ============================================================
@@ -1186,8 +1231,13 @@ async function embedWatermark(imgData, wmText, password, d1, d2, onProgress) {
   const { bits: wmBits } = shuffleWmBits(rawBits, password);
   const wmSize = wmBits.length;
 
-  if (wmSize > blockNum * 3) {
-    throw new Error(`水印文本过长：需要 ${Math.ceil(wmSize / 4 / 2)} 字符以内的文本（当前容量约 ${Math.floor(blockNum * 3 / 4 / 2)} 字符）`);
+  const stableCapacityBits = Math.floor((width * height * 3) / 3);
+  if (wmSize > blockNum * 3 || wmSize > stableCapacityBits) {
+    const payloadBytes = new TextEncoder().encode(wmText).length;
+    const frequencyBytes = Math.max(0, Math.floor(blockNum * 3 / 8) - WATERMARK_OVERHEAD_BYTES);
+    const stableBytes = Math.max(0, Math.floor(stableCapacityBits / 8) - WATERMARK_OVERHEAD_BYTES);
+    const capacityBytes = Math.min(frequencyBytes, stableBytes);
+    throw new Error(`水印文本过长：当前 ${payloadBytes} 字节，图片最多可嵌入 ${capacityBytes} 字节`);
   }
 
   // Generate block shuffles
@@ -1280,6 +1330,7 @@ async function embedWatermark(imgData, wmText, password, d1, d2, onProgress) {
     }
   }
 
+  embedStableWatermark(outData, rawBits, password);
   outCtx.putImageData(outData, 0, 0);
   onProgress(1, '完成');
   return { canvas: outCanvas, wmLen: wmText.length, blockNum, wmSize };
@@ -1289,6 +1340,12 @@ async function embedWatermark(imgData, wmText, password, d1, d2, onProgress) {
 // Core: Extract Watermark
 // ============================================================
 async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgress) {
+  const stableText = extractStableWatermark(imgData, wmByteCount, password);
+  if (stableText !== null) {
+    onProgress(1, '完成');
+    return stableText;
+  }
+
   const width = imgData.width, height = imgData.height;
   const pixels = imgData.data;
 
@@ -1322,9 +1379,8 @@ async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgre
   const blockCols = Math.floor(caCols / 4);
   const blockNum = blockRows * blockCols;
 
-  // Compute wm_size from byte count
-  // Each byte -> 2 hex chars -> 8 bits
-  const wmSize = wmByteCount * 8;
+  const payloadBitSize = wmByteCount * 8;
+  const packetBitSize = (wmByteCount + WATERMARK_OVERHEAD_BYTES) * 8;
 
   // Generate block shuffles
   const pwSeed = hashString(password + '_img');
@@ -1373,29 +1429,49 @@ async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgre
   onProgress(0.9, '解码水印...');
   await yieldUI();
 
-  // Average by watermark position
-  const wmAvg = new Float64Array(wmSize);
-  for (let p = 0; p < 3 * blockNum; p++) {
-    wmAvg[p % wmSize] += allWmValues[p];
+  function extractBitsForSize(wmSize) {
+    if (wmSize > 3 * blockNum) {
+      throw new Error('该图片容量不足，无法包含指定长度的水印');
+    }
+    const wmAvg = new Float64Array(wmSize);
+    for (let p = 0; p < 3 * blockNum; p++) {
+      wmAvg[p % wmSize] += allWmValues[p];
+    }
+    for (let i = 0; i < wmSize; i++) {
+      const count = Math.floor((3 * blockNum - i + wmSize - 1) / wmSize);
+      wmAvg[i] /= count;
+    }
+    return bitCandidates(wmAvg).map(candidate => ({
+      bits: unshuffleWmBits(candidate.bits, password),
+      confidence: unshuffleWmBits(candidate.confidence, password)
+    }));
   }
-  const reps = Math.floor(3 * blockNum / wmSize);
-  for (let i = 0; i < wmSize; i++) {
-    const count = Math.floor((3 * blockNum - i + wmSize - 1) / wmSize);
-    wmAvg[i] /= count;
+
+  for (const candidate of extractBitsForSize(packetBitSize)) {
+    const text = tryDecodeWithBitRepair(
+      candidate.bits,
+      candidate.confidence,
+      bits => decodePacketBytes(bitsToBytes(bits))
+    );
+    if (text !== null) {
+      onProgress(1, '完成');
+      return text;
+    }
   }
 
-  // K-means threshold
-  const avgArr = Array.from(wmAvg);
-  const bits = oneDimKMeans(avgArr);
+  for (const candidate of extractBitsForSize(payloadBitSize)) {
+    const text = tryDecodeWithBitRepair(
+      candidate.bits,
+      candidate.confidence,
+      bits => decodeLegacyBits(bits)
+    );
+    if (text !== null) {
+      onProgress(1, '完成（旧版水印）');
+      return text;
+    }
+  }
 
-  // Unshuffle (decrypt)
-  const unshuffledBits = unshuffleWmBits(bits, password);
-
-  // Decode to text
-  const text = bitsToText(unshuffledBits);
-
-  onProgress(1, '完成');
-  return text;
+  throw new Error('水印解码失败：请确认图片、密码、水印字节数和 d1/d2 与嵌入时一致');
 }
 
 // ============================================================
@@ -1445,9 +1521,15 @@ async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgre
   });
 
   // File upload helper
-  function setupUpload(zoneId, fileId, callback) {
+  function setupUpload(zoneId, fileId, statusId, callback) {
     const zone = $(zoneId);
     const input = $(fileId);
+    const status = $(statusId);
+    const setStatus = (text, success = false) => {
+      status.textContent = text;
+      status.classList.add('visible');
+      status.classList.toggle('success', success);
+    };
     zone.addEventListener('click', () => input.click());
     zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
     zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
@@ -1460,9 +1542,24 @@ async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgre
       if (input.files.length) handleFile(input.files[0]);
     });
     function handleFile(file) {
+      zone.classList.remove('uploaded');
       if (!file.type.startsWith('image/')) { toast('请上传图片文件'); return; }
       const reader = new FileReader();
+      setStatus(`正在读取：${file.name}（0%）`);
+      reader.onprogress = e => {
+        if (!e.lengthComputable) {
+          setStatus(`正在读取：${file.name}`);
+          return;
+        }
+        const percent = Math.min(99, Math.round((e.loaded / e.total) * 100));
+        setStatus(`正在读取：${file.name}（${percent}%）`);
+      };
+      reader.onerror = () => {
+        setStatus('图片读取失败，请重试');
+        toast('图片读取失败');
+      };
       reader.onload = e => {
+        setStatus('读取完成，正在解码图片...');
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
@@ -1470,7 +1567,14 @@ async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgre
           canvas.height = img.naturalHeight;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
-          callback(ctx.getImageData(0, 0, canvas.width, canvas.height), e.target.result);
+          callback(ctx.getImageData(0, 0, canvas.width, canvas.height), e.target.result, file);
+          zone.classList.add('uploaded');
+          setStatus(`已上传：${file.name}（${canvas.width}×${canvas.height}）`, true);
+          toast('图片上传成功');
+        };
+        img.onerror = () => {
+          setStatus('图片解码失败，请更换图片');
+          toast('图片解码失败');
         };
         img.src = e.target.result;
       };
@@ -1479,7 +1583,7 @@ async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgre
   }
 
   // Embed upload
-  setupUpload('embed-upload-zone', 'embed-file', (imgData, url) => {
+  setupUpload('embed-upload-zone', 'embed-file', 'embed-upload-status', (imgData, url) => {
     embedImgData = imgData;
     embedOrigURL = url;
     $('btn-embed').disabled = false;
@@ -1493,15 +1597,17 @@ async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgre
     const caRows = pRows >> 1, caCols = pCols >> 1;
     const blockNum = Math.floor(caRows / 4) * Math.floor(caCols / 4);
     const totalBits = blockNum * 3;
-    const maxChars = Math.floor(totalBits / 8); // approx bytes
-    $('embed-capacity').textContent = `图片 ${imgData.width}x${imgData.height}，可嵌入约 ${maxChars} 字节的水印数据`;
+    const frequencyBytes = Math.max(0, Math.floor(totalBits / 8) - WATERMARK_OVERHEAD_BYTES);
+    const stableBytes = Math.max(0, Math.floor((imgData.width * imgData.height * 3) / (8 * 3)) - WATERMARK_OVERHEAD_BYTES);
+    const maxBytes = Math.min(frequencyBytes, stableBytes);
+    $('embed-capacity').textContent = `图片 ${imgData.width}x${imgData.height}，可嵌入约 ${maxBytes} 字节的水印数据`;
 
     // Show original preview
     $('embed-img-orig').src = url;
   });
 
   // Extract upload
-  setupUpload('extract-upload-zone', 'extract-file', (imgData, url) => {
+  setupUpload('extract-upload-zone', 'extract-file', 'extract-upload-status', (imgData, url) => {
     extractImgData = imgData;
     $('btn-extract').disabled = false;
     $('extract-result-area').classList.remove('visible');
@@ -1519,6 +1625,8 @@ async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgre
     if (!embedImgData) { toast('请先上传图片'); return; }
 
     $('btn-embed').disabled = true;
+    $('embed-progress').style.width = '0%';
+    $('embed-progress-text').textContent = '准备中...';
     $('embed-progress-wrap').classList.add('visible');
     $('embed-preview').classList.remove('visible');
     $('btn-download').style.display = 'none';
@@ -1566,6 +1674,8 @@ async function extractWatermark(imgData, wmByteCount, password, d1, d2, onProgre
     if (!extractImgData) { toast('请先上传图片'); return; }
 
     $('btn-extract').disabled = true;
+    $('extract-progress').style.width = '0%';
+    $('extract-progress-text').textContent = '准备中...';
     $('extract-progress-wrap').classList.add('visible');
     $('extract-result-area').classList.remove('visible');
 
